@@ -30,7 +30,6 @@ jobs:
           test "$version" = "$npm_version" || { echo "npm launcher is $npm_version but the app is $version"; exit 1; }
       - name: Run the tests
         run: |
-          sudo apt-get update && sudo apt-get install -y ffmpeg
           pip install -e ".[dev]"
           pytest -q
       - name: Build
