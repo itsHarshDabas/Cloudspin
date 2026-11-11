@@ -1,0 +1,71 @@
+# Publishes to PyPI and npm when a version tag is pushed:
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# One-time setup:
+#   PyPI: add a "pending publisher" at https://pypi.org/manage/account/publishing/
+#         (project cloudspin, owner itsHarshDabas, repository Cloudspin,
+#         workflow release.yml, environment pypi). No token needed.
+#   npm:  create an automation token at npmjs.com and save it in this
+#         repository as the secret NPM_TOKEN.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check the tag matches the version in the code
+        run: |
+          version=$(python -c "import re; print(re.search(r'__version__ = \"(.+?)\"', open('src/cloudspin/__init__.py').read()).group(1))")
+          npm_version=$(python -c "import json; print(json.load(open('packaging/npm/package.json'))['version'])")
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME does not match version $version"; exit 1; }
+          test "$version" = "$npm_version" || { echo "npm launcher is $npm_version but the app is $version"; exit 1; }
+      - name: Run the tests
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          pip install -e ".[dev]"
+          pytest -q
+      - name: Build
+        run: |
+          pip install build
+          python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  npm:
+    # The npm package only launches the Python app, so it goes out after PyPI.
+    needs: pypi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - run: npm publish --access public
+        working-directory: packaging/npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

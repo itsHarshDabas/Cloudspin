@@ -5,11 +5,11 @@ weather for your city is written across the horizon, and the sky itself changes
 with the song: phonk brings a thunderstorm, lo-fi settles into evening,
 synthwave turns the stars on.
 
-![Cloudspin playing a lo-fi song under an evening sky](docs/evening.png)
+![Cloudspin playing a lo-fi song under an evening sky](https://raw.githubusercontent.com/itsHarshDabas/Cloudspin/main/docs/evening.png)
 
 | Phonk gets a storm | Synthwave gets the night, in the cover's colours |
 | --- | --- |
-| ![Thunderstorm scene](docs/storm.png) | ![Night scene](docs/night.png) |
+| ![Thunderstorm scene](https://raw.githubusercontent.com/itsHarshDabas/Cloudspin/main/docs/storm.png) | ![Night scene](https://raw.githubusercontent.com/itsHarshDabas/Cloudspin/main/docs/night.png) |
 
 ## What it does
 
@@ -144,10 +144,11 @@ Built-in themes: `sky`, `cover`, `amber`, `orchid`, `lagoon`, `moss`, `rose`, `m
 | Channel | Status |
 | --- | --- |
 | Git (`pipx`, `uv`) | Works today |
-| PyPI | Ready to publish: `python -m build && twine upload dist/*`. The name `cloudspin` was free when checked in November 2026. |
-| AUR | `packaging/aur/PKGBUILD` is written but depends on the PyPI release |
-| npm | `packaging/npm` is a small launcher that runs the Python app through `uv` or `pipx`; not published |
+| PyPI and npm | Published by `.github/workflows/release.yml` when a `v*` tag is pushed. Setup steps are at the top of that file. |
+| AUR | `packaging/aur/PKGBUILD` is written; it builds from the PyPI release |
 | Homebrew | Not started |
+
+The npm package is a small launcher that runs the Python app through `uv` or `pipx`.
 
 ## Develop
 
