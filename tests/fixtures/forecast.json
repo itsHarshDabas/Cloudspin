@@ -1,0 +1,33 @@
+{
+  "latitude": 28.625,
+  "longitude": 77.25,
+  "generationtime_ms": 0.12,
+  "utc_offset_seconds": 19800,
+  "timezone": "Asia/Kolkata",
+  "timezone_abbreviation": "GMT+5:30",
+  "elevation": 214.0,
+  "current_units": {"time": "iso8601", "interval": "seconds", "temperature_2m": "°C"},
+  "current": {
+    "time": "2026-11-11T16:15",
+    "interval": 900,
+    "temperature_2m": 24.3,
+    "apparent_temperature": 25.8,
+    "relative_humidity_2m": 46,
+    "is_day": 1,
+    "precipitation": 0.0,
+    "weather_code": 2,
+    "cloud_cover": 38,
+    "wind_speed_10m": 8.4,
+    "wind_direction_10m": 312
+  },
+  "daily_units": {"time": "iso8601", "weather_code": "wmo code"},
+  "daily": {
+    "time": ["2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15", "2026-11-16", "2026-11-17"],
+    "weather_code": [2, 0, 3, 61, 95, 45, 1],
+    "temperature_2m_max": [28.6, 29.1, 27.4, 24.0, 23.2, 25.5, 27.9],
+    "temperature_2m_min": [16.8, 17.2, 17.9, 18.4, 17.0, 15.6, 15.9],
+    "sunrise": ["2026-11-11T06:41", "2026-11-12T06:42", "2026-11-13T06:43", "2026-11-14T06:43", "2026-11-15T06:44", "2026-11-16T06:45", "2026-11-17T06:46"],
+    "sunset": ["2026-11-11T17:29", "2026-11-12T17:28", "2026-11-13T17:28", "2026-11-14T17:27", "2026-11-15T17:27", "2026-11-16T17:26", "2026-11-17T17:26"],
+    "precipitation_probability_max": [0, 0, 10, 65, 80, 20, 5]
+  }
+}

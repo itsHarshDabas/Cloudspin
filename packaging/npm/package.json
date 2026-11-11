@@ -1,0 +1,11 @@
+{
+  "name": "cloudspin",
+  "version": "0.1.0",
+  "description": "Launcher for Cloudspin, a terminal music player under a living sky. Runs the Python app through uv or pipx.",
+  "bin": { "cloudspin": "bin/cloudspin.js" },
+  "files": ["bin"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/itsHarshDabas/Cloudspin.git" },
+  "keywords": ["tui", "music", "player", "weather", "terminal"],
+  "engines": { "node": ">=18" }
+}

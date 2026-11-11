@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cloudspin"
+dynamic = ["version"]
+description = "A terminal music player that lives under a living sky: spinning vinyl, real weather, animated scenes."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "Harsh Dabas" }]
+keywords = ["tui", "music", "player", "weather", "terminal", "textual", "mpv"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Players",
+]
+dependencies = [
+    "textual>=8.0",
+    "mutagen>=1.47",
+    "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[project.urls]
+Homepage = "https://github.com/itsHarshDabas/Cloudspin"
+Issues = "https://github.com/itsHarshDabas/Cloudspin/issues"
+
+[project.scripts]
+cloudspin = "cloudspin.cli:main"
+
+[tool.hatch.version]
+path = "src/cloudspin/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cloudspin"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
