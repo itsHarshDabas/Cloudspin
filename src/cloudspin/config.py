@@ -35,6 +35,7 @@ class Config:
     music: str = "~/Music"
     volume: int = 70
     fps: int = 24
+    listen: bool = True  # decode a little of each song to choose its sky
     themes: dict[str, dict[str, str]] = field(default_factory=dict)
     moods: dict[str, str] = field(default_factory=dict)
     path: Path | None = None
@@ -56,6 +57,8 @@ class Config:
         for key, lo, hi in (("volume", 0, 100), ("fps", 4, 60)):
             if isinstance(data.get(key), int) and not isinstance(data.get(key), bool):
                 setattr(config, key, max(lo, min(hi, data[key])))
+        if isinstance(data.get("listen"), bool):
+            config.listen = data["listen"]
         if config.units not in ("metric", "imperial"):
             config.units = "metric"
         themes = data.get("themes")
@@ -91,6 +94,7 @@ class Config:
             f"music = {quote(self.music)}",
             f"volume = {self.volume}",
             f"fps = {self.fps}",
+            f"listen = {str(self.listen).lower()}",
         ]
         if self.moods:
             lines += ["", "[moods]"]

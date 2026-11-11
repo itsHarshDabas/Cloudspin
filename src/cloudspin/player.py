@@ -26,6 +26,7 @@ class Track:
     album: str = ""
     duration: float = 0.0
     genre: str = ""
+    pinned: bool = False  # the title and artist are already right; don't take them from the stream
 
     @property
     def is_stream(self) -> bool:
@@ -182,6 +183,8 @@ class MpvBackend:
             path = rf"\\.\pipe\cloudspin-{os.getpid()}-{Path(self._dir).name}"
         else:
             path = str(Path(self._dir) / "mpv.sock")
+        self.binary = binary
+        self.ytdlp = ytdlp
         options = list(extra_args)
         if ytdlp:
             # Point mpv at the yt-dlp that was installed with Cloudspin.

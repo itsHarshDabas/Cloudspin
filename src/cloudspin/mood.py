@@ -1,11 +1,12 @@
 """Which sky suits a song.
 
-Three sources, in order of trust:
+In order of trust:
 
 1. your own ``[moods]`` rules from the config file,
-2. words in the genre tag, title and album ("phonk", "lofi", "rain", ...),
-3. a short listen: 30 seconds decoded with ffmpeg and measured for loudness,
-   tempo, bass weight and brightness. This last one is a rough guess.
+2. how the song sounds: 30 seconds are decoded (by mpv, or ffmpeg for files)
+   and measured for rhythm, brightness, bass weight and loudness,
+3. words in the genre tag, title and album ("phonk", "lofi", "rain", ...),
+   which also give an instant first guess while the listening happens.
 
 If none of them says anything, the sky goes back to showing the real weather.
 """
@@ -17,8 +18,10 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from array import array
 from dataclasses import dataclass
+from pathlib import Path
 
 from .sky import Daylight, Weather
 
@@ -55,7 +58,7 @@ class Mood:
 
 # A trailing * matches any ending ("melanchol*" matches "melancholy").
 _GENRES: list[tuple[str, tuple[str, ...]]] = [
-    ("storm", ("phonk", "metal", "metalcore", "deathcore", "hardstyle", "hardcore", "drill", "dubstep",
+    ("storm", ("phonk", "hoodtrap", "hood trap", "trap metal", "rage", "bass boosted", "metal", "metalcore", "deathcore", "hardstyle", "hardcore", "drill", "dubstep",
                "drum and bass", "drum & bass", "dnb", "industrial", "rage", "grindcore", "punk",
                "breakcore", "gabber", "riddim", "hard rock", "thrash", "screamo")),
     ("rain", ("blues", "emo", "sad", "melanchol*", "grunge", "slowcore", "doom")),
@@ -75,7 +78,7 @@ _GENRES: list[tuple[str, tuple[str, ...]]] = [
 
 # Only words that plainly name a sky are trusted in titles and album names.
 _TITLES: list[tuple[str, tuple[str, ...]]] = [
-    ("storm", ("phonk", "thunder*", "storm*", "lightning", "hurricane", "tempest")),
+    ("storm", ("phonk", "hoodtrap", "hood trap", "bass boosted", "thunder*", "storm*", "lightning", "hurricane", "tempest")),
     ("rain", ("rain*", "monsoon", "petrichor", "drizzle", "downpour", "tears", "umbrella")),
     ("snow", ("snow*", "winter", "christmas", "xmas", "frost*", "blizzard", "icicle*")),
     ("fog", ("fog*", "mist*", "haze", "hazy", "smoke")),
@@ -96,16 +99,26 @@ _GENRE_RULES = [(scene, word, _pattern(word)) for scene, words in _GENRES for wo
 _TITLE_RULES = [(scene, word, _pattern(word)) for scene, words in _TITLES for word in words]
 
 
+def from_rules(
+    title: str, artist: str = "", album: str = "", genre: str = "", rules: dict[str, str] | None = None
+) -> Mood | None:
+    """Your own ``[moods]`` rules. These always win, even over what the song sounds like."""
+    everything = f"{genre} {title} {artist} {album}".lower()
+    for word, scene in (rules or {}).items():
+        if scene in SCENES and word.strip() and _pattern(word.strip().lower()).search(everything):
+            return Mood(scene, f"your rule for “{word.strip()}”")
+    return None
+
+
 def from_words(
     title: str, artist: str = "", album: str = "", genre: str = "", rules: dict[str, str] | None = None
 ) -> Mood | None:
     """Guess a sky from what the song is called and how it is tagged."""
     genre_text = genre.lower()
     name_text = f"{title} {album}".lower()
-    everything = f"{genre} {title} {artist} {album}".lower()
-    for word, scene in (rules or {}).items():
-        if scene in SCENES and word.strip() and _pattern(word.strip().lower()).search(everything):
-            return Mood(scene, f"your rule for “{word.strip()}”")
+    ruled = from_rules(title, artist, album, genre, rules)
+    if ruled is not None:
+        return ruled
     if genre_text.strip():
         # Rules run in order, so "dream pop" is caught as fog before "pop" can claim it.
         for scene, word, pattern in _GENRE_RULES:
@@ -131,10 +144,13 @@ class Features:
 
     @property
     def intensity(self) -> float:
+        """How hard the song hits, 0..1. Rhythm counts for more than volume,
+        because nearly everything is mastered loud."""
         loud = min(1.0, max(0.0, (self.loudness + 28.0) / 18.0))
-        busy = min(1.0, self.onsets / 5.0)
+        busy = min(1.0, self.onsets / 6.0)
+        bright = min(1.0, self.brightness / 0.10)
         fast = min(1.0, max(0.0, (self.tempo - 70.0) / 90.0))
-        return 0.5 * loud + 0.3 * busy + 0.2 * fast
+        return 0.25 * loud + 0.35 * busy + 0.2 * bright + 0.2 * fast
 
 
 def measure(samples, rate: int = 8000) -> Features | None:
@@ -202,41 +218,82 @@ def measure(samples, rate: int = 8000) -> Features | None:
     )
 
 
-def listen(path: str, ffmpeg: str | None = None) -> Features | None:
-    """Decode half a minute from the middle of a file and measure it."""
-    if "://" in path:
-        return None
-    ffmpeg = ffmpeg or shutil.which("ffmpeg")
-    if not ffmpeg:
-        return None
+SAMPLE_RATE = 8000
+_ENOUGH = SAMPLE_RATE * 2 * 8  # eight seconds is the least worth measuring
+
+
+def _decode_with_mpv(mpv: str, path: str, ytdlp: str | None, start: int, timeout: float) -> bytes:
+    """Have mpv write 30 seconds of the song as raw samples. Works for links too."""
+    with tempfile.TemporaryDirectory(prefix="cloudspin-listen-") as folder:
+        clip = Path(folder) / "clip.raw"
+        command = [
+            mpv, "--no-config", "--no-terminal", "--no-video", "--ytdl-format=bestaudio/best",
+            f"--start={start}", "--length=30", "--audio-channels=mono", f"--audio-samplerate={SAMPLE_RATE}",
+            "--oac=pcm_s16le", "--of=s16le", f"--o={clip}",
+        ]  # fmt: skip
+        if ytdlp:
+            command.append(f"--script-opts=ytdl_hook-ytdl_path={ytdlp}")
+        try:
+            subprocess.run(
+                [*command, "--", path],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout,
+            )  # fmt: skip
+            return clip.read_bytes()
+        except (OSError, subprocess.SubprocessError):
+            return b""
+
+
+def _decode_with_ffmpeg(ffmpeg: str, path: str, start: int) -> bytes:
+    try:
+        done = subprocess.run(
+            [ffmpeg, "-v", "error", "-nostdin", "-ss", str(start), "-t", "30", "-i", path,
+             "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "s16le", "-"],
+            stdin=subprocess.DEVNULL, capture_output=True, timeout=25,
+        )  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        return b""
+    return done.stdout
+
+
+def listen(
+    path: str,
+    mpv: str | None = None,
+    ytdlp: str | None = None,
+    ffmpeg: str | None | bool = None,
+) -> Features | None:
+    """Decode half a minute from inside a song and measure it.
+
+    mpv does the decoding when it is given, which covers links as well as
+    files. ffmpeg is the fallback for files; pass ``ffmpeg=False`` to rule it out.
+    """
+    stream = "://" in path
+    if ffmpeg is None:
+        ffmpeg = shutil.which("ffmpeg")
     raw = b""
     for start in (40, 0):
-        try:
-            done = subprocess.run(
-                [ffmpeg, "-v", "error", "-nostdin", "-ss", str(start), "-t", "30", "-i", path,
-                 "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "-"],
-                stdin=subprocess.DEVNULL, capture_output=True, timeout=25,
-            )  # fmt: skip
-        except (OSError, subprocess.SubprocessError):
-            return None
-        raw = done.stdout
-        if len(raw) >= 8000 * 2 * 8:
+        if mpv:
+            raw = _decode_with_mpv(mpv, path, ytdlp, start, 75 if stream else 30)
+        if len(raw) < _ENOUGH and ffmpeg and not stream:
+            raw = _decode_with_ffmpeg(str(ffmpeg), path, start)
+        if len(raw) >= _ENOUGH:
             break
+    if len(raw) < _ENOUGH:
+        return None
     samples = array("h")
     samples.frombytes(raw[: len(raw) // 2 * 2])
     if sys.byteorder == "big":
         samples.byteswap()
-    return measure(samples, 8000)
+    return measure(samples, SAMPLE_RATE)
 
 
 def from_features(features: Features) -> Mood:
-    """Turn measurements into a sky. Heavy and loud storms; quiet and slow settles."""
+    """Turn measurements into a sky. Busy, bright and bass-heavy storms; slow and soft settles."""
     intensity = features.intensity
-    if intensity >= 0.68:
-        if features.bass >= 0.42:
-            return Mood("storm", "loud, fast and heavy on bass")
+    if intensity >= 0.62:
+        if features.bass >= 0.40:
+            return Mood("storm", "hard-hitting and heavy on bass")
         return Mood("day", "bright and energetic")
-    if intensity >= 0.48:
+    if intensity >= 0.45:
         if features.brightness < 0.06 and features.bass >= 0.35:
             return Mood("rain", "dark and steady")
         return Mood("day", "upbeat")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import queue
 import threading
@@ -12,7 +13,7 @@ from textual.binding import Binding
 from textual.color import Color
 from textual.containers import Horizontal, Vertical
 
-from . import library, mood, weather
+from . import library, links, mood, weather
 from .config import Config, cache_dir
 from pathlib import Path
 
@@ -108,6 +109,14 @@ class CloudspinApp(App[None]):
         self._weather_due = 0.0
         self._weather_busy = False
         self._closing = False
+        self._heard: set[str] = set()  # songs whose sky came from listening, not from words
+        self._features: dict[str, list[float]] = {}
+        self._features_lock = threading.Lock()
+        try:
+            saved = json.loads((cache_dir() / "listened.json").read_text(encoding="utf-8"))
+            self._features = {str(k): [float(x) for x in v] for k, v in saved.items() if isinstance(v, list) and len(v) == 5}
+        except (OSError, ValueError, TypeError):
+            pass
         self._is_up = False
 
     # -- layout --------------------------------------------------------------
@@ -267,7 +276,7 @@ class CloudspinApp(App[None]):
     def _follow_stream(self) -> None:
         """Links only learn their real name once they start playing."""
         track = self.deck.current
-        if track is None or not track.is_stream:
+        if track is None or not track.is_stream or track.pinned:
             return
         backend = self.deck.backend
         title = getattr(backend, "media_title", "")
@@ -281,7 +290,8 @@ class CloudspinApp(App[None]):
         look = look_for(track.title, track.artist, track.album, None)
         guess = mood.from_words(track.title, track.artist, track.album, track.genre, self.config.moods)
         self._looks[track.path] = self.look = look
-        self._moods[track.path] = self.mood = guess
+        if track.path not in self._heard:
+            self._moods[track.path] = self.mood = guess
 
     def _open(self, target: str | None) -> None:
         if not target:
@@ -289,7 +299,18 @@ class CloudspinApp(App[None]):
         target = target.strip()
         if "://" in target:
             if self.deck.backend.silent:
-                self.flash("Links need mpv for sound. Install mpv, plus yt-dlp for YouTube links.", 7.0)
+                self.flash("Links need mpv for sound, and mpv isn't installed.", 7.0)
+                return
+            if links.is_collection(target):
+                self.flash("Reading the playlist…", 30.0)
+
+                def work() -> None:
+                    try:
+                        self._inbox.put(("playlist", links.expand(target), ""))
+                    except links.LinkError as error:
+                        self._inbox.put(("playlist", [], str(error)))
+
+                threading.Thread(target=work, name="cloudspin-playlist", daemon=True).start()
                 return
             tracks = [Track(path=target, title=target.split("://", 1)[1].rstrip("/") or target)]
         else:
@@ -312,15 +333,52 @@ class CloudspinApp(App[None]):
             library.read_tags(track)
             art = library.cover_art(path)
             self._inbox.put(("look", path, look_for(track.title, track.artist, track.album, art)))
-            guess = mood.from_words(track.title, track.artist, track.album, track.genre, self.config.moods)
-            if guess is None and not track.is_stream:
-                features = mood.listen(path)
-                if features is not None:
-                    self._inbox.put(("tempo", path, features.tempo))
-                    guess = mood.from_features(features)
-            self._inbox.put(("mood", path, guess))
+            ruled = mood.from_rules(track.title, track.artist, track.album, track.genre, self.config.moods)
+            if ruled is not None:
+                self._inbox.put(("mood", path, ruled, "sound"))  # your rules outrank everything
+                return
+            # Words give an instant first guess; the sound of the song has the final say.
+            guess = mood.from_words(track.title, track.artist, track.album, track.genre)
+            self._inbox.put(("mood", path, guess, "words"))
+            features = self._listen(track) if self.config.listen else None
+            if features is not None:
+                self._inbox.put(("tempo", path, features.tempo))
+                self._inbox.put(("mood", path, mood.from_features(features), "sound"))
         except Exception:  # a broken file must never take the app down
-            self._inbox.put(("mood", path, None))
+            self._inbox.put(("mood", path, None, "words"))
+        finally:
+            self._inbox.put(("studied", path))
+
+    def _listen(self, track) -> mood.Features | None:
+        """Measure a song, remembering the answer so it is only ever done once."""
+        path = track.path
+        key = path
+        if not track.is_stream:
+            try:
+                stat = Path(path).stat()
+                key = f"{path}|{stat.st_size}|{int(stat.st_mtime)}"
+            except OSError:
+                return None
+        known = self._features.get(key)
+        if known is not None:
+            return mood.Features(*known)
+        backend = self.deck.backend
+        if track.is_stream and backend.silent:
+            return None
+        features = mood.listen(path, getattr(backend, "binary", None), getattr(backend, "ytdlp", None))
+        if features is None:
+            return None
+        with self._features_lock:
+            self._features[key] = [features.loudness, features.tempo, features.onsets, features.bass, features.brightness]
+            while len(self._features) > 4000:
+                self._features.pop(next(iter(self._features)))
+            try:
+                target = cache_dir() / "listened.json"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(json.dumps(self._features), encoding="utf-8")
+            except OSError:
+                pass
+        return features
 
     def _read_all_tags(self) -> None:
         for track in list(self.deck.tracks):
@@ -342,10 +400,24 @@ class CloudspinApp(App[None]):
                 if item[1] == current:
                     self.look = item[2]
             elif kind == "mood":
-                self._moods[item[1]] = item[2]
+                path, guess, source = item[1], item[2], item[3]
+                if source == "sound":
+                    self._heard.add(path)
+                elif path in self._heard:
+                    continue  # a guess from words never replaces what was heard
+                self._moods[path] = guess
+                if path == current:
+                    self.mood = guess
+            elif kind == "studied":
                 self._studying.discard(item[1])
-                if item[1] == current:
-                    self.mood = item[2]
+            elif kind == "playlist":
+                tracks, problem = item[1], item[2]
+                if problem:
+                    self.flash(problem, 8.0)
+                else:
+                    first = self.deck.add(tracks)
+                    self.deck.play(first)
+                    self.flash(f"Added {len(tracks)} songs from the playlist", 5.0)
             elif kind == "tempo":
                 self._tempos[item[1]] = item[2]
                 if item[1] == current:

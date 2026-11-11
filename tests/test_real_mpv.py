@@ -72,6 +72,19 @@ def test_real_mpv_reports_a_file_it_cannot_play(mpv_binary, tmp_path):
         deck.close()
 
 
+def test_mpv_can_do_the_listening_without_ffmpeg(mpv_binary, tmp_path):
+    from cloudspin import mood
+
+    heavy = synth.write_wav(tmp_path / "heavy.wav", synth.heavy(14))
+    soft = synth.write_wav(tmp_path / "soft.wav", synth.gentle(14))
+    heard = mood.listen(str(heavy), mpv_binary, ffmpeg=False)
+    assert heard is not None and heard.bass > 0.6
+    assert mood.from_features(heard).scene == "storm"
+    quiet = mood.listen(str(soft), mpv_binary, ffmpeg=False)
+    assert quiet is not None and mood.from_features(quiet).scene in ("night", "evening")
+    assert mood.listen(str(tmp_path / "missing.wav"), mpv_binary, ffmpeg=False) is None
+
+
 def test_ytdlp_ships_with_cloudspin():
     assert mpvget.find_ytdlp() is not None
 

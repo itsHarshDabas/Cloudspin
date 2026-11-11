@@ -15,12 +15,13 @@ def build_parser() -> argparse.ArgumentParser:
         description="A terminal music player under a living sky.",
         epilog="Settings live in ~/.config/cloudspin/config.toml. Press ? inside the app for the keys.",
     )
-    parser.add_argument("music", nargs="*", help="files, folders or stream URLs to play (default: your music folder)")
+    parser.add_argument("music", nargs="*", help="files, folders, links or playlist links to play (default: your music folder)")
     parser.add_argument("--city", help="city for the weather, for example --city \"New Delhi\"")
     parser.add_argument("--sky", metavar="MODE", help="song, weather, or a scene: storm, rain, evening, night, day, dawn, snow, fog, overcast")
     parser.add_argument("--colors", metavar="THEME", help="sky, cover, amber, orchid, lagoon, moss, rose, mono, or one of your own")
     parser.add_argument("--units", choices=("metric", "imperial"), help="°C and km/h, or °F and mph")
     parser.add_argument("--fps", type=int, metavar="N", help="animation frames per second (4-60, default 24)")
+    parser.add_argument("--listen", metavar="SONG", help="measure one file or link, print what was heard and which sky it gets, then exit")
     parser.add_argument("--demo", action="store_true", help="run a silent demo with made-up songs")
     parser.add_argument("--version", action="version", version=f"cloudspin {__version__}")
     return parser
@@ -47,13 +48,28 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     # Imported late so --help and --version stay instant.
-    from . import library, mood, mpvget, weather
+    from . import library, links, mood, mpvget, weather
     from .app import CloudspinApp
     from .config import Config
     from .player import DEMO_TRACKS, BackendError, Deck, DemoBackend, MpvBackend
     from .themes import load_themes
 
     config = Config.load()
+    if args.listen:
+        binary = mpvget.find_mpv()
+        features = mood.listen(args.listen, binary, mpvget.find_ytdlp())
+        if features is None:
+            print("Couldn't listen to that. It needs mpv (or ffmpeg for files) and at least 8 seconds of sound.")
+            return 1
+        chosen = mood.from_features(features)
+        print(f"loudness   {features.loudness:6.1f} dBFS")
+        print(f"tempo      {features.tempo:6.0f} bpm (rough)")
+        print(f"attacks    {features.onsets:6.2f} per second")
+        print(f"bass       {features.bass:6.2f} share of energy")
+        print(f"brightness {features.brightness:6.3f}")
+        print(f"intensity  {features.intensity:6.2f}")
+        print(f"sky        {mood.SCENES[chosen.scene].label} ({chosen.why})")
+        return 0
     if args.units:
         config.units = args.units
     if args.fps:
@@ -87,7 +103,16 @@ def main(argv: list[str] | None = None) -> int:
         silent_reason = "Silent demo"
     else:
         sources = args.music or [config.music]
-        tracks = library.scan(sources)
+        tracks = []
+        for source in sources:
+            if links.is_collection(source):
+                print("Reading the playlist...")
+                try:
+                    tracks += links.expand(source)
+                except links.LinkError as error:
+                    print(f"  {error}")
+            else:
+                tracks += library.scan([source])
         try:
             binary = mpvget.find_mpv()
             if binary is None and mpvget.WINDOWS:

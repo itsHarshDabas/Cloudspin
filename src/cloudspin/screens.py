@@ -78,7 +78,7 @@ def city_prompt(current: str = "") -> Prompt:
 def link_prompt() -> Prompt:
     return Prompt(
         "Play from a link",
-        "Paste a link to a song, a radio stream or a video. A file or folder path works too.",
+        "Paste a song, a radio stream, or a YouTube, YouTube Music or Spotify playlist. A file or folder path works too.",
         placeholder="https://",
         confirm="play",
     )
@@ -93,7 +93,7 @@ _KEYS = (
     ("r", "Repeat: off, all, one"),
     ("w", "Sky: follow the song, follow the weather, or pin a scene"),
     ("t", "Colours: follow the sky, follow the cover art, or pick a theme"),
-    ("o", "Open a link, file or folder and play it"),
+    ("o", "Open a link, a playlist, a file or a folder and play it"),
     ("c", "Choose the city for the weather"),
     ("u", "Switch between °C and °F"),
     ("q", "Quit"),

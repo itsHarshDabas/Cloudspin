@@ -35,3 +35,18 @@ jobs:
         run: brew install mpv ffmpeg
       - run: pip install -e ".[dev]"
       - run: pytest -q -rs
+
+  network:
+    # Real Spotify and YouTube. Informational: their servers can refuse CI machines.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mpv
+      - run: pip install -e ".[dev]"
+      - run: pytest -q -rs -s tests/test_network.py
+        env:
+          CLOUDSPIN_TEST_NETWORK: "1"
