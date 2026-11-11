@@ -85,6 +85,26 @@ def test_mpv_can_do_the_listening_without_ffmpeg(mpv_binary, tmp_path):
     assert mood.listen(str(tmp_path / "missing.wav"), mpv_binary, ffmpeg=False) is None
 
 
+def test_mpv_listens_to_a_link(mpv_binary, tmp_path):
+    """A song served over http, the way a link is, with no outside server involved."""
+    import functools
+    import http.server
+    import threading
+
+    from cloudspin import mood
+
+    synth.write_wav(tmp_path / "heavy.wav", synth.heavy(14))
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
+    handler.log_message = lambda *args: None
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        heard = mood.listen(f"http://127.0.0.1:{server.server_address[1]}/heavy.wav", mpv_binary, mpvget.find_ytdlp())
+    finally:
+        server.shutdown()
+    assert heard is not None and mood.from_features(heard).scene == "storm"
+
+
 def test_ytdlp_ships_with_cloudspin():
     assert mpvget.find_ytdlp() is not None
 

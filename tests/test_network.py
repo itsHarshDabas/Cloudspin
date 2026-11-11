@@ -27,6 +27,14 @@ def test_listening_to_a_link():
     binary = mpvget.find_mpv()
     if binary is None:
         pytest.skip("mpv is not installed")
+    import subprocess
+
+    probe = subprocess.run(
+        [binary, "--no-config", "--no-video", "--ao=null", "--length=2", "--msg-level=all=warn,ytdl_hook=debug",
+         f"--script-opts=ytdl_hook-ytdl_path={mpvget.find_ytdlp()}", "ytdl://ytsearch1:creative commons lofi music"],
+        capture_output=True, text=True, timeout=120,
+    )  # fmt: skip
+    print("mpv says:", probe.returncode, (probe.stdout + probe.stderr)[-1500:])
     features = mood.listen("ytdl://ytsearch1:creative commons lofi music", binary, mpvget.find_ytdlp())
     print("heard:", features, features and mood.from_features(features))
     assert features is not None
