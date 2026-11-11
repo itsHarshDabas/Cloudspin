@@ -30,9 +30,13 @@ const installed = onPath("cloudspin").find((candidate) => {
 });
 
 const attempts = [];
+// Ask for the exact version this launcher was published with. Without it, uv
+// and pipx keep reusing whichever version they cached first, so updating the
+// npm package would not update the app.
+const version = require("../package.json").version;
 if (installed) attempts.push([installed, args]);
-if (onPath("uvx").length) attempts.push(["uvx", ["cloudspin", ...args]]);
-if (onPath("pipx").length) attempts.push(["pipx", ["run", "cloudspin", ...args]]);
+if (onPath("uvx").length) attempts.push(["uvx", [`cloudspin@${version}`, ...args]]);
+if (onPath("pipx").length) attempts.push(["pipx", ["run", "--spec", `cloudspin==${version}`, "cloudspin", ...args]]);
 
 for (const [command, commandArgs] of attempts) {
   const status = run(command, commandArgs);
