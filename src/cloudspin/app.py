@@ -180,6 +180,8 @@ class CloudspinApp(App[None]):
     # -- the clock -----------------------------------------------------------
 
     def _tick(self) -> None:
+        if self._closing or not self.screen_stack:
+            return  # a last timer tick can land while the app is shutting down
         now = time.monotonic()
         dt = min(0.25, now - self._last)
         self._last = now

@@ -3,7 +3,7 @@
 # Not on the AUR yet. This builds from the PyPI release, so publish to PyPI
 # first, then run `updpkgsums` here to fill in the checksum.
 pkgname=cloudspin
-pkgver=0.1.1
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="A terminal music player under a living sky: spinning vinyl, real weather, scenes that follow the song"
 arch=('any')
