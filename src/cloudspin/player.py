@@ -5,10 +5,12 @@ backend, and the ``Deck`` that turns either into a queue with shuffle and repeat
 from __future__ import annotations
 
 import json
+import os
 import random
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -87,13 +89,79 @@ class DemoBackend:
         self.alive = False
 
 
+class _SocketLink:
+    """mpv's control channel on Linux and macOS: a unix socket."""
+
+    def __init__(self, path: str) -> None:
+        self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            self._sock.connect(path)
+        except OSError:
+            self._sock.close()
+            raise
+
+    def send(self, data: bytes) -> None:
+        self._sock.sendall(data)
+
+    def receive(self) -> bytes:
+        """Block until data arrives; empty bytes means mpv hung up."""
+        return self._sock.recv(65536)
+
+    def close(self) -> None:
+        try:
+            self._sock.close()
+        except OSError:
+            pass
+
+
+class _PipeLink:
+    """mpv's control channel on Windows: a named pipe.
+
+    A blocking read on a pipe handle would hold up writes from other threads,
+    so this only reads what PeekNamedPipe says is already waiting.
+    """
+
+    def __init__(self, path: str) -> None:
+        import msvcrt
+
+        self._file = open(path, "r+b", buffering=0)
+        self._handle = msvcrt.get_osfhandle(self._file.fileno())
+        self._closed = False
+
+    def send(self, data: bytes) -> None:
+        self._file.write(data)
+
+    def receive(self) -> bytes:
+        import _winapi
+
+        while not self._closed:
+            waiting = _winapi.PeekNamedPipe(self._handle, 0)[0]
+            if waiting:
+                return self._file.read(waiting) or b""
+            time.sleep(0.02)
+        return b""
+
+    def close(self) -> None:
+        self._closed = True
+        try:
+            self._file.close()
+        except OSError:
+            pass
+
+
 class MpvBackend:
     """Plays audio by running mpv in the background and talking to its IPC socket."""
 
     name = "mpv"
     silent = False
 
-    def __init__(self, volume: int = 70, binary: str | None = None) -> None:
+    def __init__(
+        self,
+        volume: int = 70,
+        binary: str | None = None,
+        ytdlp: str | None = None,
+        extra_args: tuple[str, ...] = (),
+    ) -> None:
         self.position = 0.0
         self.duration = 0.0
         self.media_title = ""
@@ -102,7 +170,7 @@ class MpvBackend:
         self._ended = False
         self._error = ""
         self._lock = threading.Lock()
-        self._sock: socket.socket | None = None
+        self._sock: _SocketLink | _PipeLink | None = None
         self._dir = ""
         self._process: subprocess.Popen | None = None
 
@@ -110,7 +178,14 @@ class MpvBackend:
         if not binary:
             raise BackendError("mpv isn't installed, so there's no sound yet. Install mpv and start Cloudspin again.")
         self._dir = tempfile.mkdtemp(prefix="cloudspin-")
-        path = str(Path(self._dir) / "mpv.sock")
+        if sys.platform == "win32":
+            path = rf"\\.\pipe\cloudspin-{os.getpid()}-{Path(self._dir).name}"
+        else:
+            path = str(Path(self._dir) / "mpv.sock")
+        options = list(extra_args)
+        if ytdlp:
+            # Point mpv at the yt-dlp that was installed with Cloudspin.
+            options.append(f"--script-opts=ytdl_hook-ytdl_path={ytdlp}")
         try:
             self._process = subprocess.Popen(
                 [
@@ -122,6 +197,7 @@ class MpvBackend:
                     "--keep-open=no",
                     f"--volume={int(volume)}",
                     f"--input-ipc-server={path}",
+                    *options,
                 ],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
@@ -143,13 +219,10 @@ class MpvBackend:
             if self._process is not None and self._process.poll() is not None:
                 break
             try:
-                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                sock.connect(path)
-                self._sock = sock
+                self._sock = _PipeLink(path) if sys.platform == "win32" else _SocketLink(path)
                 return
             except OSError as error:
                 last = error
-                sock.close()
                 time.sleep(0.05)
         self.close()
         raise BackendError("mpv started but didn't open its control socket.") from last
@@ -161,7 +234,7 @@ class MpvBackend:
         data = (json.dumps({"command": command}) + "\n").encode("utf-8")
         try:
             with self._lock:
-                sock.sendall(data)
+                sock.send(data)
         except OSError:
             self.alive = False
 
@@ -170,7 +243,7 @@ class MpvBackend:
         buffer = b""
         while sock is not None:
             try:
-                chunk = sock.recv(65536)
+                chunk = sock.receive()
             except OSError:
                 break
             if not chunk:
@@ -250,13 +323,10 @@ class MpvBackend:
         self.alive = False
         if self._sock is not None:
             try:
-                self._sock.sendall(b'{"command": ["quit"]}\n')
+                self._sock.send(b'{"command": ["quit"]}\n')
             except OSError:
                 pass
-            try:
-                self._sock.close()
-            except OSError:
-                pass
+            self._sock.close()
             self._sock = None
         if self._process is not None:
             try:

@@ -24,26 +24,29 @@ synthwave turns the stars on.
 
 ## Install
 
-Cloudspin is not on PyPI, the AUR or npm yet. Until it is, install it from this repository:
+Pick whichever you already have:
 
 ```sh
-pipx install git+https://github.com/itsHarshDabas/Cloudspin
-# or
-uv tool install git+https://github.com/itsHarshDabas/Cloudspin
+pipx install cloudspin        # Python
+uv tool install cloudspin     # uv
+npm install -g cloudspin      # npm (a launcher; it runs the Python app through uv or pipx)
 ```
 
-You also need `mpv` for sound. Two more tools are optional:
+Or try it without installing: `uvx cloudspin --demo` or `npx cloudspin --demo`.
 
-| Tool | Why |
-| --- | --- |
-| `mpv` | Plays the music. Without it Cloudspin runs silently. |
-| `ffmpeg` | Lets Cloudspin listen to songs that have no genre tag, to guess a sky. |
-| `yt-dlp` | Lets mpv play YouTube, SoundCloud and similar links. |
+Works on Linux, macOS and Windows, with Python 3.11 or newer and a truecolor
+terminal (Windows Terminal, kitty, foot, Alacritty, WezTerm, Ghostty, iTerm2
+and most others).
 
-On Arch: `sudo pacman -S mpv ffmpeg yt-dlp`.
+### What comes with it
 
-Needs Python 3.11 or newer, Linux or macOS, and a terminal with truecolor
-(kitty, foot, Alacritty, WezTerm, Ghostty, iTerm2 and most others).
+| Tool | What it's for | How you get it |
+| --- | --- | --- |
+| `yt-dlp` | YouTube, SoundCloud and similar links | Installed with Cloudspin |
+| `mpv` | Plays the sound | **Windows:** downloaded automatically the first time you start Cloudspin (about 30 MB, kept in its cache folder). **Linux and macOS:** from your package manager, e.g. `sudo pacman -S mpv`, `sudo apt install mpv`, `brew install mpv` |
+| `ffmpeg` | Optional. Lets Cloudspin listen to songs with no genre tag to guess a sky | Your package manager |
+
+Without mpv Cloudspin still runs, silently, and tells you the command to install it.
 
 ## Use
 
@@ -55,6 +58,8 @@ cloudspin https://example.com/stream.mp3   # a link
 cloudspin --city "New Delhi"    # set the city once; it is remembered
 cloudspin --demo                # look around without any music or sound
 ```
+
+No music folder? Start `cloudspin`, press `o` and paste a link.
 
 ### Keys
 
@@ -132,23 +137,25 @@ Built-in themes: `sky`, `cover`, `amber`, `orchid`, `lagoon`, `moss`, `rose`, `m
 - **The listen is a guess.** Step 3 above is a heuristic that has only been
   checked against synthetic test audio. Tags and your own rules are exact;
   use `[moods]` when it gets a song wrong.
-- **Links need mpv.** Plain audio URLs and radio streams work with mpv alone.
-  Sites like YouTube also need `yt-dlp`.
-- **Windows is not supported** except through WSL: playback control uses a
-  Unix socket.
-- **MPRIS** (media keys, `playerctl`, Waybar) works if you have the
+- **Links** play through mpv, with the bundled yt-dlp handling sites like
+  YouTube. Sites change often; if a link stops working, update with
+  `pipx upgrade cloudspin` (or `uv tool upgrade cloudspin`) to get a newer yt-dlp.
+- **Windows** uses the mpv that Cloudspin downloads for itself unless `mpv` is
+  already on your PATH.
+- **MPRIS** (media keys, `playerctl`, Waybar) works on Linux if you have the
   `mpv-mpris` plugin installed for mpv; Cloudspin loads your normal mpv config.
 
-## Packaging status
+## Releases
 
 | Channel | Status |
 | --- | --- |
-| Git (`pipx`, `uv`) | Works today |
-| PyPI and npm | Published by `.github/workflows/release.yml` when a `v*` tag is pushed. Setup steps are at the top of that file. |
-| AUR | `packaging/aur/PKGBUILD` is written; it builds from the PyPI release |
+| [PyPI](https://pypi.org/project/cloudspin/) | Published |
+| [npm](https://www.npmjs.com/package/cloudspin) | Published (launcher for the Python app) |
+| AUR | `packaging/aur/PKGBUILD` is written, not submitted yet |
 | Homebrew | Not started |
 
-The npm package is a small launcher that runs the Python app through `uv` or `pipx`.
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which tests, then
+publishes to PyPI and npm.
 
 ## Develop
 
@@ -170,6 +177,7 @@ The code is small and split by job:
 | `mood.py` | Choosing a scene for a song |
 | `weather.py` | Open-Meteo and sun and moon maths |
 | `player.py` | mpv control and the queue |
+| `mpvget.py` | Finding mpv and yt-dlp; the Windows mpv download |
 | `widgets.py`, `app.py` | The interface |
 
 ## Licence

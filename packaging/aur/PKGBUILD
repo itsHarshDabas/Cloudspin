@@ -3,15 +3,14 @@
 # Not on the AUR yet. This builds from the PyPI release, so publish to PyPI
 # first, then run `updpkgsums` here to fill in the checksum.
 pkgname=cloudspin
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc="A terminal music player under a living sky: spinning vinyl, real weather, scenes that follow the song"
 arch=('any')
 url="https://github.com/itsHarshDabas/Cloudspin"
 license=('MIT')
-depends=('python' 'python-textual' 'python-mutagen' 'python-pillow' 'mpv')
-optdepends=('ffmpeg: guess a sky for songs with no genre tag'
-            'yt-dlp: play YouTube and similar links')
+depends=('python' 'python-textual' 'python-mutagen' 'python-pillow' 'yt-dlp' 'mpv')
+optdepends=('ffmpeg: guess a sky for songs with no genre tag')
 makedepends=('python-build' 'python-installer' 'python-hatchling')
 source=("https://files.pythonhosted.org/packages/source/c/cloudspin/cloudspin-$pkgver.tar.gz")
 sha256sums=('SKIP')

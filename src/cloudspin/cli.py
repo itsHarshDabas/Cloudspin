@@ -26,11 +26,28 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _fetch_mpv(mpvget) -> str | None:
+    """First run on Windows: download mpv, showing progress on the plain terminal."""
+    print("Cloudspin plays sound through mpv. Downloading it once (about 30 MB)...")
+
+    def progress(done: int, total: int) -> None:
+        if total:
+            print(f"\r  {done * 100 // total:3d}%", end="", flush=True)
+
+    try:
+        binary = mpvget.download_mpv(progress)
+    except mpvget.MpvInstallError as error:
+        print(f"\n{error}\nStarting without sound. You can install mpv yourself from https://mpv.io")
+        return None
+    print("\r  done.")
+    return binary
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     # Imported late so --help and --version stay instant.
-    from . import library, mood, weather
+    from . import library, mood, mpvget, weather
     from .app import CloudspinApp
     from .config import Config
     from .player import DEMO_TRACKS, BackendError, Deck, DemoBackend, MpvBackend
@@ -71,19 +88,25 @@ def main(argv: list[str] | None = None) -> int:
     else:
         sources = args.music or [config.music]
         tracks = library.scan(sources)
+        try:
+            binary = mpvget.find_mpv()
+            if binary is None and mpvget.WINDOWS:
+                binary = _fetch_mpv(mpvget)
+            if binary is None:
+                raise BackendError(f"mpv isn't installed, so there's no sound. Get it with: {mpvget.install_hint()}")
+            backend = MpvBackend(volume=config.volume, binary=binary, ytdlp=mpvget.find_ytdlp())
+        except BackendError as error:
+            backend = DemoBackend()
+            silent_reason = "No sound"
+            notice = str(error)
         if not tracks:
             where = ", ".join(str(Path(s).expanduser()) if "://" not in s else s for s in sources)
-            tracks = [type(t)(**vars(t)) for t in DEMO_TRACKS]
-            backend = DemoBackend()
-            silent_reason = "Silent demo"
-            notice = f"No music found in {where}. Showing a silent demo; start with: cloudspin <folder>"
-        else:
-            try:
-                backend = MpvBackend(volume=config.volume)
-            except BackendError as error:
-                backend = DemoBackend()
-                silent_reason = "No sound"
-                notice = str(error)
+            if backend.silent:
+                tracks = [type(t)(**vars(t)) for t in DEMO_TRACKS]
+                silent_reason = "Silent demo"
+                notice = notice or f"No music found in {where}. Showing a silent demo; start with: cloudspin <folder>"
+            else:
+                notice = f"No music found in {where}. Press o to play a link, a file or a folder"
 
     deck = Deck(backend, tracks, volume=config.volume)
     app = CloudspinApp(config, deck, silent_reason=silent_reason, notice=notice)

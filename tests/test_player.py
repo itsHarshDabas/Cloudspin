@@ -131,7 +131,7 @@ def mpv():
     backend.close()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="mpv is driven over a unix socket")
+@pytest.mark.skipif(sys.platform == "win32", reason="the stand-in mpv speaks over a unix socket")
 def test_mpv_backend_speaks_the_protocol(mpv):
     backend, commands = mpv
     deck = Deck(backend, [Track("/music/one.flac", "one"), Track("/music/two.flac", "two")], volume=55)
@@ -151,7 +151,7 @@ def test_mpv_backend_speaks_the_protocol(mpv):
     assert wait_for(lambda: backend.position == 31.25)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="mpv is driven over a unix socket")
+@pytest.mark.skipif(sys.platform == "win32", reason="the stand-in mpv speaks over a unix socket")
 def test_mpv_backend_moves_on_at_the_end_and_stops_on_errors(mpv):
     backend, _ = mpv
     deck = Deck(backend, [Track("/music/short.mp3", "short"), Track("https://example.com/missing", "link"), Track("/c.mp3", "c")])

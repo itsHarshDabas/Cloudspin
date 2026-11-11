@@ -274,7 +274,8 @@ class SkyView(Pixels):
     def _write_big(self, texts: dict[int, RowText], report: Report, x0: int, room: int) -> int:
         name = fit(report.place.label, min(room, 30))
         used = lay_text(texts, x0, 1, name, INK, True)
-        when = f"{report.local_now():%a %-d %b  %H:%M}"
+        now = report.local_now()
+        when = f"{now:%a} {now.day} {now:%b}  {now:%H:%M}"  # %-d is not portable to Windows
         if used + 3 + len(when) <= min(room, 52):
             used += 3 + lay_text(texts, x0 + used + 3, 1, when, INK_SOFT)
         number = str(round(report.temperature))
@@ -387,7 +388,7 @@ class NowPlaying(Painted):
         lines: list[list[Segment]] = []
         if track is None:
             title = "Nothing on the platter"
-            second = "Press space to start playing" if deck.tracks else "Start Cloudspin with a music folder to fill the queue"
+            second = "Press space to start playing" if deck.tracks else "Press o to play a link, a file or a folder"
             third = ""
         else:
             title = track.title
